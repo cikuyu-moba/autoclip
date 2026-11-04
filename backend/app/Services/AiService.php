@@ -58,12 +58,12 @@ class AiService
                 throw new \RuntimeException('AI image generation gagal: ' . $message);
             }
 
-            $imageUrl = $json['data'][0]['url'];
-            $ext = '.png';
-            $assetPath = 'assets/' . $kind . '/' . uniqid('autoclip_') . $ext;
+            $imageUrl = (string) ($json['data'][0]['url'] ?? '');
+            $assetPath = 'assets/' . $kind . '/' . uniqid('autoclip_') . '.png';
             $assetFull = storage_path('app/public/' . $assetPath);
             @mkdir(dirname($assetFull), 0777, true, true);
-            exec('curl -sS ' . escapeshellarg($imageUrl) . ' -o ' . escapeshellarg($assetFull));
+            $downloadUrl = rtrim((string) env('APP_URL', 'http://localhost'), '/') . $imageUrl;
+            exec('curl -sS ' . escapeshellarg($downloadUrl) . ' -o ' . escapeshellarg($assetFull));
             if (!is_file($assetFull)) {
                 throw new \RuntimeException('Gagal menyimpan file hasil generate AI.');
             }
