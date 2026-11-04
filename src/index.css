@@ -1,0 +1,32 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply antialiased;
+  }
+
+  /* Dropdown native (select) mengikuti tema gelap agar teks opsi terbaca */
+  select {
+    color-scheme: dark;
+  }
+
+  select option {
+    background-color: #0f172a;
+    color: #ffffff;
+  }
+
+  select option:disabled {
+    color: #94a3b8;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl shadow-2xl;
+  }
+  .range-input {
+    @apply w-full h-2 bg-white/10 rounded-lg appearance-none cursor-pointer accent-accent-500;
+  }
+}
