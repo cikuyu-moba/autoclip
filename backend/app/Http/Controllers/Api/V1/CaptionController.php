@@ -49,10 +49,10 @@ class CaptionController extends Controller
     protected function resolveVideoPath(string $videoUrl): string
     {
         if (str_starts_with($videoUrl, '/') && !preg_match('#^https?://#i', $videoUrl)) {
-            $base = str_starts_with($videoUrl, '/storage')
-                ? rtrim(storage_path('app/public'), '/')
-                : rtrim(storage_path('app/private'), '/');
-            return rtrim($base, '/') . substr($videoUrl, strlen(str_starts_with($videoUrl, '/storage') ? strlen('/storage') : 0));
+            if (str_starts_with($videoUrl, '/storage')) {
+                return rtrim(storage_path('app/public'), '/') . substr($videoUrl, strlen('/storage'));
+            }
+            return $videoUrl;
         }
         return $videoUrl;
     }
