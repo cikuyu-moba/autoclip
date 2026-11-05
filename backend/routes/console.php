@@ -13,3 +13,9 @@ Schedule::command('software:sync')->twiceDaily(1, 13)->withoutOverlapping()->run
 
 // Schedule automatic discovery of new software releases weekly
 Schedule::command('software:discover --limit=2')->weeklyOn(1, '03:00')->withoutOverlapping()->runInBackground();
+
+// Hapus otomatis video unduhan + file sementara AutoClip yang lebih tua dari TTL (default 1 jam)
+Schedule::command('autoclip:cleanup')
+    ->everyFiveMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();

@@ -31,8 +31,14 @@ class ClipService
         $end = (float) ($data['end_time'] ?? 30);
 
         $ffmpeg = app(FfmpegService::class);
-        $src = $ffmpeg->resolveSource($source);
-        $op = $ffmpeg->preview($src, $start, $end);
+        $section = $ffmpeg->downloadSection($source, $start, $end);
+        if ($section !== null) {
+            // File section sudah mulai dari 0 detik.
+            $op = $ffmpeg->preview($section, 0, max(0.1, $end - $start));
+        } else {
+            $src = $ffmpeg->resolveSource($source);
+            $op = $ffmpeg->preview($src, $start, $end);
+        }
 
         $previewUrl = $ffmpeg->toPublicUrl($op['file'], 'videos/preview');
         $job->update([
@@ -54,13 +60,24 @@ class ClipService
         $end = (float) ($data['end_time'] ?? 30);
 
         $ffmpeg = app(FfmpegService::class);
-        $src = $ffmpeg->resolveSource($source);
-        $cut = $ffmpeg->cut($src, $start, $end, [
-            'resolution' => $data['resolution'] ?? null,
-            'aspect_ratio' => $data['aspect_ratio'] ?? null,
-            'video_bitrate' => $data['video_bitrate'] ?? null,
-            'audio_bitrate' => $data['audio_bitrate'] ?? null,
-        ]);
+        $section = $ffmpeg->downloadSection($source, $start, $end);
+        if ($section !== null) {
+            // File section sudah mulai dari 0 detik.
+            $cut = $ffmpeg->cut($section, 0, max(0.1, $end - $start), [
+                'resolution' => $data['resolution'] ?? null,
+                'aspect_ratio' => $data['aspect_ratio'] ?? null,
+                'video_bitrate' => $data['video_bitrate'] ?? null,
+                'audio_bitrate' => $data['audio_bitrate'] ?? null,
+            ]);
+        } else {
+            $src = $ffmpeg->resolveSource($source);
+            $cut = $ffmpeg->cut($src, $start, $end, [
+                'resolution' => $data['resolution'] ?? null,
+                'aspect_ratio' => $data['aspect_ratio'] ?? null,
+                'video_bitrate' => $data['video_bitrate'] ?? null,
+                'audio_bitrate' => $data['audio_bitrate'] ?? null,
+            ]);
+        }
         $clipUrl = $ffmpeg->toPublicUrl($cut['file'], 'videos/clip');
 
         $job->update([
@@ -82,13 +99,24 @@ class ClipService
         $end = (float) ($data['end_time'] ?? 30);
 
         $ffmpeg = app(FfmpegService::class);
-        $src = $ffmpeg->resolveSource($source);
-        $cut = $ffmpeg->cut($src, $start, $end, [
-            'resolution' => $data['resolution'] ?? null,
-            'aspect_ratio' => $data['aspect_ratio'] ?? null,
-            'video_bitrate' => $data['video_bitrate'] ?? null,
-            'audio_bitrate' => $data['audio_bitrate'] ?? null,
-        ]);
+        $section = $ffmpeg->downloadSection($source, $start, $end);
+        if ($section !== null) {
+            // File section sudah mulai dari 0 detik.
+            $cut = $ffmpeg->cut($section, 0, max(0.1, $end - $start), [
+                'resolution' => $data['resolution'] ?? null,
+                'aspect_ratio' => $data['aspect_ratio'] ?? null,
+                'video_bitrate' => $data['video_bitrate'] ?? null,
+                'audio_bitrate' => $data['audio_bitrate'] ?? null,
+            ]);
+        } else {
+            $src = $ffmpeg->resolveSource($source);
+            $cut = $ffmpeg->cut($src, $start, $end, [
+                'resolution' => $data['resolution'] ?? null,
+                'aspect_ratio' => $data['aspect_ratio'] ?? null,
+                'video_bitrate' => $data['video_bitrate'] ?? null,
+                'audio_bitrate' => $data['audio_bitrate'] ?? null,
+            ]);
+        }
         $clipUrl = $ffmpeg->toPublicUrl($cut['file'], 'videos/clip');
 
         $job->update([
@@ -112,13 +140,34 @@ class ClipService
         }
 
         $ffmpeg = app(FfmpegService::class);
-        $src = $ffmpeg->resolveSource($source);
+
+        // Hitung rentang total segmen agar hanya bagian yang diperlukan yang diunduh.
+        $minStart = null;
+        $maxEnd = null;
+        foreach ($segments as $seg) {
+            $segStart = (float) ($seg['start_time'] ?? 0);
+            $segEnd = (float) ($seg['end_time'] ?? $segStart + 1);
+            $minStart = $minStart === null ? $segStart : min($minStart, $segStart);
+            $maxEnd = $maxEnd === null ? $segEnd : max($maxEnd, $segEnd);
+        }
+
+        $section = $ffmpeg->downloadSection($source, (float) $minStart, (float) $maxEnd);
+        if ($section !== null) {
+            $src = $section;
+            $offset = (float) $minStart;
+        } else {
+            $src = $ffmpeg->resolveSource($source);
+            $offset = 0.0;
+        }
+
         $files = [];
         $totalDuration = 0.0;
 
         foreach ($segments as $seg) {
-            $start = (float) ($seg['start_time'] ?? 0);
-            $end = (float) ($seg['end_time'] ?? $start + 1);
+            $origStart = (float) ($seg['start_time'] ?? 0);
+            $origEnd = (float) ($seg['end_time'] ?? $origStart + 1);
+            $start = max(0.0, $origStart - $offset);
+            $end = max($start + 0.1, $origEnd - $offset);
             $cut = $ffmpeg->cut($src, $start, $end, ['resolution' => $data['resolution'] ?? null]);
             $files[] = $cut['file'];
             $totalDuration += (float) $cut['duration'];

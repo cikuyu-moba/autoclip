@@ -270,7 +270,7 @@ class SyncSoftwareReleases extends Command
     {
         $dir = public_path('images/software');
         if (!is_dir($dir)) {
-            @mkdir($dir, 0755, true);
+            @mkdir($dir, 0755);
         }
 
         // 1. Check if local icon already exists

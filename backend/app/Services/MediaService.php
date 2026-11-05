@@ -14,13 +14,41 @@ class MediaService
             return array_merge(['url' => $url], $info);
         }
 
-        $json = shell_exec('yt-dlp -J ' . escapeshellarg($url) . ' 2>/dev/null');
-        if (!$json) {
-            throw new \RuntimeException('Tidak dapat mengambil metadata video dari URL tersebut.');
+        $binary = escapeshellarg((string) config('autoclip.yt_dlp.binary', 'yt-dlp'));
+
+        $tempDir = storage_path('app/private');
+        if (!is_dir($tempDir)) {
+            @mkdir($tempDir, 0777, true);
         }
+        $errFile = rtrim($tempDir, '/\\') . DIRECTORY_SEPARATOR . 'ytdlp-meta-' . uniqid('', true) . '.log';
+
+        $output = [];
+        $code = 0;
+        exec(
+            $binary . ' --no-playlist --no-warnings -J '
+            . escapeshellarg($url) . ' 2>' . escapeshellarg($errFile),
+            $output,
+            $code
+        );
+
+        // stdout harus murni JSON; stderr (warning/error) dibaca terpisah.
+        $json = implode("\n", $output);
         $data = json_decode($json, true);
-        if (!is_array($data)) {
-            throw new \RuntimeException('Metadata video gagal diparse.');
+
+        $detail = '';
+        if (is_file($errFile)) {
+            $detail = trim((string) @file_get_contents($errFile));
+            @unlink($errFile);
+        }
+
+        if ($code !== 0 || !is_array($data)) {
+            $lines = preg_split('/\R/', $detail) ?: [];
+            $detail = trim(implode(' | ', array_slice(array_filter($lines), -3)));
+
+            throw new \RuntimeException(
+                'Tidak dapat mengambil metadata video dari URL tersebut.'
+                . ($detail !== '' ? ' Detail: ' . $detail : '')
+            );
         }
 
         return [

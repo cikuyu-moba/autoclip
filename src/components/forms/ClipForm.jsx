@@ -10,6 +10,7 @@ import {
   AUDIO_BITRATE_OPTIONS,
 } from "@/utils/ffmpegHelpers";
 import { formatShort } from "@/utils/formatTime";
+import { toSeconds } from "@/utils/formatTime";
 import { TrimTimeline } from "@/components/editor/TrimTimeline";
 import { Button, Input, Progress, Select } from "@/components/ui";
 import {
@@ -29,8 +30,6 @@ import {
   MessageSquareText,
 } from "lucide-react";
 import { MultiSegmentClipper } from "./MultiSegmentClipper";
-
-const sec = (value) => Number(value || 0).toFixed(2);
 
 export const ClipForm = ({ onStartEditing }) => {
   const [mode, setMode] = useState("url"); // 'url' | 'upload'
@@ -67,7 +66,7 @@ export const ClipForm = ({ onStartEditing }) => {
 
   const localVideoRef = useRef(null);
 
-  const selectionValid = end > start && end - start >= 0.3;
+  const selectionValid = toSeconds(end) > toSeconds(start) && toSeconds(end) - toSeconds(start) >= 0.3;
   const busyAny = busy !== null || uploading || infoLoading || previewLoading;
   const hasSource = mode === "url" ? !!info : !!local;
 
@@ -124,8 +123,8 @@ export const ClipForm = ({ onStartEditing }) => {
     try {
       const res = await startPreview({
         url: url.trim(),
-        start_time: sec(start),
-        end_time: sec(end),
+        start_time: toSeconds(start),
+        end_time: toSeconds(end),
       });
       const jobId = res.data?.id;
       if (!jobId) throw new Error("Gagal memulai preview");
@@ -157,8 +156,8 @@ export const ClipForm = ({ onStartEditing }) => {
     try {
       const res = await startClip({
         url: url.trim(),
-        start_time: sec(start),
-        end_time: sec(end),
+        start_time: toSeconds(start),
+        end_time: toSeconds(end),
         resolution,
         aspect_ratio: aspect,
         video_bitrate: vbr,
@@ -192,8 +191,8 @@ export const ClipForm = ({ onStartEditing }) => {
     try {
       const res = await trimLocal({
         video_url: local.video_url,
-        start_time: sec(start),
-        end_time: sec(end),
+        start_time: toSeconds(start),
+        end_time: toSeconds(end),
         resolution,
         aspect_ratio: aspect,
         video_bitrate: vbr,

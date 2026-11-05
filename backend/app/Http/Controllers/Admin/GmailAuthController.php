@@ -101,7 +101,7 @@ class GmailAuthController extends Controller
             // Ensure directory exists
             $dir = dirname($tokenFile);
             if (!is_dir($dir)) {
-                mkdir($dir, 0755, true);
+                mkdir($dir, 0755);
             }
 
             if (@file_put_contents($tokenFile, json_encode($saveData)) === false) {

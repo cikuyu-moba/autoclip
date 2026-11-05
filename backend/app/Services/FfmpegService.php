@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Helper eksekusi FFmpeg + manajemen file sementara untuk pipeline Autoclip.
@@ -15,7 +16,7 @@ class FfmpegService
     {
         $this->tempDir = storage_path('app/private');
         if (!is_dir($this->tempDir)) {
-            @mkdir($this->tempDir, 0777, true, true);
+            @mkdir($this->tempDir, 0777);
         }
     }
 
@@ -53,17 +54,7 @@ class FfmpegService
     public function resolveSource(string $source): string
     {
         if (filter_var($source, FILTER_VALIDATE_URL)) {
-            $dest = $this->tempPath('src');
-            exec(
-                'yt-dlp -f best -o ' . escapeshellarg($dest) . ' ' . escapeshellarg($source) . ' > /dev/null 2>&1',
-                $output,
-                $code
-            );
-            $files = glob(rtrim($this->tempDir, '/\\') . '/src-*');
-            if ($code !== 0 || empty($files)) {
-                throw new \RuntimeException('Gagal mengunduh source video dari URL tersebut.');
-            }
-            return $files[0];
+            return $this->downloadSource($source);
         }
 
         $path = $this->toLocalPath($source);
@@ -72,6 +63,102 @@ class FfmpegService
         }
 
         return $path;
+    }
+
+    /**
+     * Unduh hanya potongan video dari URL (file hasil dimulai dari 0 detik).
+     *
+     * Mengembalikan null jika source bukan URL atau unduhan section gagal,
+     * sehingga pemanggil bisa fallback ke `resolveSource()` (unduh penuh).
+     */
+    public function downloadSection(string $source, float $start, float $end): ?string
+    {
+        if (!filter_var($source, FILTER_VALIDATE_URL) || $end <= $start) {
+            return null;
+        }
+
+        try {
+            return $this->downloadSource($source, $start, $end);
+        } catch (\Throwable $e) {
+            Log::warning('[autoclip:download-section] Gagal unduh potongan, fallback ke unduhan penuh: ' . $e->getMessage());
+
+            return null;
+        }
+    }
+
+    /**
+     * Unduh video dari URL memakai yt-dlp.
+     *
+     * Jika $start/$end diisi (dan valid), hanya rentang tersebut yang diunduh
+     * via `--download-sections`; file hasil dimulai dari 0 detik.
+     *
+     * Menggunakan template unik + `--print after_move:filepath` agar tidak
+     * salah mengambil file sisa job lain (bug pada versi sebelumnya yang
+     * memakai glob `src-*`).
+     */
+    protected function downloadSource(string $url, ?float $start = null, ?float $end = null): string
+    {
+        $base = rtrim($this->tempDir, '/\\') . DIRECTORY_SEPARATOR . 'src-' . uniqid('', true);
+        $template = $base . '.%(ext)s';
+
+        $binary = (string) config('autoclip.yt_dlp.binary', 'yt-dlp');
+        $errFile = $base . '.stderr.log';
+
+        $sectionArg = '';
+        if ($start !== null && $end !== null && $end > $start) {
+            $range = round(max(0.0, $start), 3) . '-' . round($end, 3);
+            $sectionArg = ' --download-sections ' . escapeshellarg('*' . $range);
+        }
+
+        $cmd = escapeshellarg($binary)
+            . ' --no-playlist --no-warnings --no-progress'
+            . ' --socket-timeout 30 --retries 3'
+            . ' --merge-output-format mp4'
+            . $sectionArg
+            . ' -f ' . escapeshellarg('bv*[height<=1080][ext=mp4]+ba[ext=m4a]/b[height<=1080][ext=mp4]/bv*[height<=1080]+ba/b')
+            . ' -o ' . escapeshellarg($template)
+            . ' --print after_move:filepath'
+            . ' ' . escapeshellarg($url)
+            . ' 2>' . escapeshellarg($errFile);
+
+        $output = [];
+        $code = 0;
+        exec($cmd, $output, $code);
+
+        // Ambil path file yang benar-benar dihasilkan yt-dlp (stdout bersih).
+        $file = null;
+        foreach (array_reverse($output) as $line) {
+            $line = trim((string) $line);
+            if ($line !== '' && is_file($line)) {
+                $file = $line;
+                break;
+            }
+        }
+
+        $detail = '';
+        if (is_file($errFile)) {
+            $detail = trim((string) @file_get_contents($errFile));
+            @unlink($errFile);
+        }
+
+        if ($code !== 0 || $file === null) {
+            // Bersihkan sisa unduhan parsial agar tidak menumpuk.
+            foreach (glob($base . '.*') ?: [] as $leftover) {
+                if (is_file($leftover)) {
+                    @unlink($leftover);
+                }
+            }
+
+            $lines = preg_split('/\R/', $detail) ?: [];
+            $detail = trim(implode(' | ', array_slice(array_filter($lines), -5)));
+
+            throw new \RuntimeException(
+                'Gagal mengunduh source video dari URL tersebut.'
+                . ($detail !== '' ? ' Detail: ' . $detail : '')
+            );
+        }
+
+        return $file;
     }
 
     /**
